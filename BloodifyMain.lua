@@ -10,9 +10,6 @@
 --// ? all the services used in the plugin
 local Selection = game:GetService("Selection") --// ? used for current selection, for Preferences
 local RunService = game:GetService("RunService") --// ? used for :IsStudio(), yup, that's literally it
-local MarketplaceService = game:GetService("MarketplaceService") --// ? used for checking for the latest ver of the plugin
-local InsertService = game:GetService("InsertService") --// ? hi
-local Players = game:GetService("Players") --// ? hi
 
 --// > Resources < //--
 --// ? all the modules and assets used in the plugin
