@@ -1,5 +1,5 @@
 --// > Bloodify: An HDify Fork < //--
---// ! Version: V1.0.0 | Last Updated: 4/5/26 | Made by BloodLight (@Heavenly_Strings on Roblox)
+--// ! Version: V1.0.2 | Last Updated: 3/5/26 | Made by BloodLight (@Heavenly_Strings on Roblox)
 --// ? devforum post (https://devforum.roblox.com/t/bloodify-an-overly-optimized-accessory-and-face-converter-v100)
 --// ? the main purpose of the plugin is to convert Accessories to be much better and less partcount-intensive in heavy games
 --// ? this plugin has little to no code from HDify, but was used as a base, and is heavily inspired by it. this wouldn't exist without that
