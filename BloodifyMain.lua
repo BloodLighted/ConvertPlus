@@ -1,20 +1,23 @@
 --// > Bloodify: An HDify Fork < //--
---// ! Version: V1.0.2 | Last Updated: 3/5/26 | Made by BloodLight (@Heavenly_Strings on Roblox)
+--// ! Version: V1.1.0 | Last Updated: 3/6/26 | Made by BloodLight (@Heavenly_Strings on Roblox)
 --// ? devforum post (https://devforum.roblox.com/t/bloodify-an-overly-optimized-accessory-and-face-converter-v100)
 --// ? the main purpose of the plugin is to convert Accessories to be much better and less partcount-intensive in heavy games
---// ? this plugin has little to no code from HDify, but was used as a base, and is heavily inspired by it. this wouldn't exist without that
 --// | TODO: add a desktop pet feature via a viewport that covers the entire ui and contains a mini-player with custom animations that can be thrown around (planned for 2.0.0)
 --!optimize 2
+--!native
+--!strict
 
 --// > Services < //--
 --// ? all the services used in the plugin
 local Selection = game:GetService("Selection") --// ? used for current selection, for Preferences
 local RunService = game:GetService("RunService") --// ? used for :IsStudio(), yup, that's literally it
+local ServerStorage = game:GetService("ServerStorage") --// ? used for storing preferences temporarily
+local ScriptEditorService = game:GetService("ScriptEditorService") --// ? why is this not in the autocorrect dude
 
 --// > Resources < //--
 --// ? all the modules and assets used in the plugin
 local Modules = script:WaitForChild("Modules") --// ? the folder where all modules are stored
-local Preferences = require(Modules.BloodifyPreferences) --// ? where all the settings/preferences for the plugin are stored
+local Preferences = require(Modules:WaitForChild("BloodifyPreferences") :: any) :: {[string]: any} --// ? where all the settings/preferences for the plugin are stored (please shut the hell up --!strict i'm genuinely begging you)
 local AccService = require(Modules.AccessoryService) --// ? handles converting the accessories
 local HeadService = require(Modules.HeadService) --// ?  handles converting the head
 local NotificationService = require(Modules.NotificationService) --// ? handles the notifications
@@ -22,7 +25,7 @@ local NotificationService = require(Modules.NotificationService) --// ? handles 
 --// > Functions < //--
 --// ? functions used for Preferences
 --// ? convert other types to strings for SetSetting
-local function Serialize(val)
+local function Serialize(val: any): any
 	if typeof(val) == "Color3" then
 		return "COLOR3:" .. val:ToHex()
 	elseif typeof(val) == "EnumItem" then
@@ -32,24 +35,26 @@ local function Serialize(val)
 end
 
 --// ? convert string values to their original types
-local function Deserialize(val)
+local function Deserialize(val: any): any
 	if type(val) == "string" then
 		if val:find("COLOR3:") then
-			return Color3.fromHex(val:gsub("COLOR3:", ""))
+			return Color3.fromHex((val:gsub("COLOR3:", "")))
 		elseif val:find("ENUM:") then
 			local path = val:gsub("ENUM:", "")
-			local parts = path:split(".") --// ["Enum", "Font", "BuilderSansExtraBold"]
-			local success, enumObj = pcall(function()
-				return Enum[parts[2]][parts[3]]
-			end)
-			return success and enumObj or val
+			local parts = path:split(".") --// expecting: ["Enum", "Font", "BuilderSansExtraBold"]
+			if #parts >= 3 then
+				local success, enumObj = pcall(function()
+					return Enum[parts[2]][parts[3]]
+				end)
+				return success and enumObj or val
+			end
 		end
 	end
 	return val
 end
 
 --// ? save the preferences
-local function SavePreferences(newPrefsTable, rawSource)
+local function SavePreferences(newPrefsTable: {[string]: any}, rawSource: string?)
 	for key, value in pairs(newPrefsTable) do
 		local safeValue = Serialize(value)
 		plugin:SetSetting(key, safeValue)
@@ -87,42 +92,51 @@ local preferencesButton = toolbar:CreateButton("Preferences", "Imports a module 
 
 --// > Connections < //--
 --// ? handles the connections of the toolbar icons
-accessoryButton.Click:Connect(AccService.ConvertAccessories)
-headButton.Click:Connect(HeadService.ConvertHead)
+accessoryButton.Click:Connect(function() AccService.ConvertAccessories() end)
+headButton.Click:Connect(function() HeadService.ConvertHead() end)
 
-local activeSessionConnection = nil
+local selectionConnection: RBXScriptConnection? = nil
+
 preferencesButton.Click:Connect(function()
-	local serverStorage = game:GetService("ServerStorage")
-	local prefScript = serverStorage:FindFirstChild("BloodifyPreferences")
+	if selectionConnection then return end
+	local prefScript = ServerStorage:FindFirstChild("BloodifyPreferences")
 
-	--// ? incase there already is one (not possible but wtv)
+	--// ? incase there already is one (not possible but safety first ig)
 	if not prefScript then
 		prefScript = Modules.BloodifyPreferences:Clone()
 		local savedSource = plugin:GetSetting("SavedRawSource")
-		if savedSource then
-			prefScript.Source = savedSource
-		end
-
-		prefScript.Parent = serverStorage
+		if savedSource then prefScript.Source = savedSource end
+		prefScript.Parent = ServerStorage
 	end
+	
 	--// ? selects and opens the module
 	Selection:Set({prefScript})
-	plugin:OpenScript(prefScript) --// ? technically deprecated but ScriptEditorService is legitimate hell ngl to you
+	ScriptEditorService:OpenScriptDocumentAsync(prefScript)
 
-	local selectionConnection
 	selectionConnection = Selection.SelectionChanged:Connect(function()
 		local currentSelection = Selection:Get()
 
 		--// ? check if the selection is empty or the first item is not the script
 		if #currentSelection == 0 or currentSelection[1] ~= prefScript then
-			local code = prefScript.Source
-
+			if selectionConnection then
+				selectionConnection:Disconnect()
+				selectionConnection = nil
+			end
+			
+			if not prefScript then return end
+			
 			--// ? save before deleting
-			local success, result = pcall(function()
-				return loadstring(code)()
-			end)
+			local code = (prefScript :: ModuleScript).Source
+			--// 1. | Load the chunk first
+			local chunk, compileError = loadstring(code)
 
-			if success then
+			--// 2. | Check if it actually loaded (strict mode requires it and i want it to shut the hell up)
+			if not chunk then warn("{BloodifyPlugin} // > Syntax Error in Preferences: " .. tostring(compileError)) return end
+
+			--// 3. | Execute the chunk (chunk is now (hopefully) guaranteed to not be nil)
+			local success, result = pcall(chunk)
+
+			if success and type(result) == "table" then
 				if type(result) == "table" then
 					--// ? yay it worked
 					SavePreferences(result, code)
@@ -145,7 +159,6 @@ preferencesButton.Click:Connect(function()
 
 			--// ? cleanup
 			prefScript:Destroy()
-			selectionConnection:Disconnect()
 		end
 	end)
 end)
