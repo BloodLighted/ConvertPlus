@@ -1,4 +1,4 @@
-# Bloodify
+# ConvertPlus
 ## A overly-optimized HDify Fork
 Bloodify is a fork of the HDify Roblox plugin that converts Accessories and Faces to HD, and removing bloat from said accessories.
 **If you are _not_ interested in instance count optimization of Accessories and or making the Face HD, then you are free to click off.**
