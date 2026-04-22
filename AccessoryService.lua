@@ -120,11 +120,32 @@ function AccessoryService.ConvertAccessories(): number
 
 		if not template then table.insert(failReasons, "[" .. acc.Name .. "]: Mesh download failed!") continue end --// fail reason
 
-		local weldbutnotreally = handle:FindFirstChildOfClass("Weld") or handle:FindFirstChild("AccessoryWeld")
-		local limb: BasePart?
-		if weldbutnotreally and (weldbutnotreally:IsA("Weld") or weldbutnotreally:IsA("ManualWeld")) then
-			local weld = weldbutnotreally :: Weld --// just so strict shuts up
-			limb = (weld.Part0 == handle and weld.Part1 or weld.Part0) :: BasePart --// limb of accessory
+		local weld = handle:FindFirstChildOfClass("Weld") or handle:FindFirstChild("ManualWeld") --// just a normal weld
+		local rigidConstraint = handle:FindFirstChildOfClass("RigidConstraint") --// god i HATE these things so much just use a weldconstraint instead of this please i'm begging you
+		local limb: BasePart? --// limb
+		
+		local handleAttachment = handle:FindFirstChildOfClass("Attachment") --// handle attachment
+		if handleAttachment then
+			for _, desc in ipairs(data.Model:GetDescendants()) do
+				local parent = desc.Parent --// i hate --!strict and i hate lua
+				if desc:IsA("Attachment") and desc.Name == handleAttachment.Name and parent ~= handle then
+					if parent and parent:IsA("BasePart") then
+						limb = parent :: BasePart
+						break
+					end
+				end
+			end
+		end
+		
+		if not limb then
+			if rigidConstraint then --// rigidconstraint stuff
+				local attachment1 = rigidConstraint.Attachment1
+				if attachment1 and attachment1.Parent and attachment1.Parent:IsA("BasePart") then 
+					limb = attachment1.Parent :: BasePart 
+				end
+			elseif weld and (weld:IsA("Weld") or weld:IsA("ManualWeld")) then --// weld stuff
+				limb = (weld.Part0 == handle and weld.Part1 or weld.Part0) :: BasePart
+			end
 		end
 
 		if not limb or not limb:IsA("BasePart") then table.insert(failReasons, "[" .. acc.Name .. "]: No limb/basepart found to weld to!") continue end --// fail reason
