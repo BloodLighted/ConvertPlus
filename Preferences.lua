@@ -58,4 +58,5 @@ return {
 	faceDecalName = "MainFaceDecal", --// (string) | the name that the face Decal under facePart will use (default: "MainFaceDecal")
 	useLegacyFaceWeld = false, --// (bool) | if true, the weld will be a normal Weld instead of a WeldConstraint. this means you cannot move the part or the weld breaks (default: false)
 	keepOldFace = false, --// (bool) | if true, the original face after the conversion will stay under a folder of the head. this is what HDify does also (default: false)
+	meshTextureFallbackForFace = true, --// (bool) | if true, the face decal will use the head's specialmesh/meshpart's texture if the face is the default Roblox one, due to how ugc heads are (default: true)
 }
