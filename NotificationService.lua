@@ -186,19 +186,16 @@ local function updateWiggles() --// wiggle wiggle wiggle
 		local floatX = (cosTX * cosW - sinTX * sinW) * xMult --// float x axis
 		local targetRot = ((cosTRot * cosW - sinTRot * sinW) * rotMult) + state.angleOffset --// target rotation
 
-		--// raw scalar arithmetic instead of Vector2 subtraction → magnitude → normalize → multiply
-		--// each of those Vector2 ops allocates a new table on the heap
-		local absPos = label.AbsolutePosition --// absolute position and size of label
-		local absSize = label.AbsoluteSize
-		local dx = mousePosX - (absPos.X + absSize.X * 0.5)
-		local dy = mousePosY - (absPos.Y + absSize.Y * 0.5)
+		--// raw scalar arithmetic
+		local absPos, absSize = label.AbsolutePosition, label.AbsoluteSize --// absolute position and size of label
+		local dx, dy = mousePosX - (absPos.X + absSize.X * 0.5), mousePosY - (absPos.Y + absSize.Y * 0.5)
 		local dist = math.sqrt(dx * dx + dy * dy)
 
 		local targetSize: number, targetZIndex: number, targetOffsetX: number, targetOffsetY = baseSize, 1, 0, 0
 
 		if dist < hoverRadius and dist > 0.001 then --// if in hover radius and not too close
 			local pct = 1 - (dist * invHoverRadius) --// get the percentage
-			local influence = pct * pct * pct --// influence can be done better probably but idrc rn
+			local influence = pct * pct * (3 - 2 * pct) --// influence can be done better probably but idrc rn
 			local invDist = 1 / dist --// one division instead of Vector2.Unit
 			targetOffsetX = (dx * invDist) * (hoverMovePower * influence) --// target offset of x
 			targetOffsetY = (dy * invDist) * (hoverMovePower * influence) --// target offset of y
@@ -261,6 +258,7 @@ local function getCharUI(): UINode
 	return uiNode
 end
 
+--// releases character UI
 local function releaseCharUI(uiNode: UINode)
 	uiNode.Layout.Parent = nil
 	uiNode.Label.TextTransparency = 1
@@ -276,20 +274,17 @@ local function getOrCreateGui(): (ScreenGui, ScrollingFrame?)
 	local existingGui = CoreGui:FindFirstChild("ConvertPlusNotifications") :: ScreenGui? --// find existing
 	local gui: ScreenGui --// gui
 
-	if existingGui and existingGui:IsA("ScreenGui") then
-		gui = existingGui :: ScreenGui
-	else
-		gui = Instance.new("ScreenGui") --// gui
+	if existingGui and existingGui:IsA("ScreenGui") then gui = existingGui :: ScreenGui
+	else gui = Instance.new("ScreenGui") --// gui
 		gui.Name, gui.DisplayOrder, gui.IgnoreGuiInset, gui.ResetOnSpawn = "ConvertPlusNotifications", 10, true, false --// properties
 		gui.Parent = CoreGui --// parent to coregui
 	end
 
-	local existingStack = gui:FindFirstChild("NotificationStack") :: ScrollingFrame?
+	local existingStack = gui:FindFirstChild("NotificationStack") :: ScrollingFrame
 	local stack: ScrollingFrame
 
 	if existingStack then stack = existingStack
-	else
-		stack = Instance.new("ScrollingFrame")
+	else stack = Instance.new("ScrollingFrame")
 		stack.CanvasSize, stack.ScrollBarThickness, stack.ScrollingEnabled, stack.Name = UDim2.new(0,0,0,0), 0, false, "NotificationStack" --// properties 1
 		stack.Size, stack.AnchorPoint, stack.Position, stack.BackgroundTransparency = UDim2.new(1, 0, 1, 0), Vector2.new(0.5, 0.5), UDim2.new(0.5, 0, 0.5, 0), 1 --// properties 2
 		stack.Parent = gui --// parent to gui
@@ -304,9 +299,7 @@ local function getOrCreateGui(): (ScreenGui, ScrollingFrame?)
 		local padding = Instance.new("UIPadding") --// padding
 		padding.PaddingTop = UDim.new(0, 5) --// padding on top
 		padding.Parent = stack --// parent to stack
-	end
-
-	return gui :: ScreenGui, stack
+	end return gui :: ScreenGui, stack
 end
 
 --// > Main < //--
@@ -321,7 +314,13 @@ function NotificationService.Notify(message: string, isSuccess: boolean, service
 	local dur = duration or 6 --// duration
 	message = string.gsub(message, "\\n", "\n") --// escape newlines
 
-	local textSpeed = Preferences.textSpeed or 0.02 --// speed of the typewriter
+	local baseTextSpeed = Preferences.textSpeed or 0.02 --// base text speed (intro)
+	local baseTextEndSpeed = Preferences.textEndSpeed or 0.015 --// base text end speed (outro)
+	local textLength: number = #message --// length of the message
+	local speedMultiplier = math.clamp(150 / (textLength + 100), 0.15, 1.0) --// speed mult based on length of the full msg
+	local textSpeed = baseTextSpeed * speedMultiplier --// speed of the typewriter effect oo scary!
+	local textEndSpeed = baseTextEndSpeed * speedMultiplier --// speed of the outro effect oo scarier!!
+
 	local statusText = isSuccess and "Success!" or "Error!"
 	local prefix = string.format("{ConvertPlus} | {%s} [%s] // > ", serviceName or "System", statusText)
 	local fullText = prefix .. message
@@ -332,21 +331,19 @@ function NotificationService.Notify(message: string, isSuccess: boolean, service
 		data.ExpireTime = os.clock() + dur
 		data.TotalDuration = dur
 		data.Count += 1
-		
+
 		if data.TimerLabel then data.TimerLabel.Text = string.format("%.1fs", dur) end
 
 		--// restart duration bar tween and text
 		if data.BarTween then data.BarTween:Cancel() end
-		if data.DurationBar then
-			data.DurationBar.Size = UDim2.new(1, 0, 0, 3)
+		if data.DurationBar then data.DurationBar.Size = UDim2.new(1, 0, 0, 3)
 			local newBarTween = TweenService:Create(data.DurationBar, TweenInfo.new(dur, Enum.EasingStyle.Linear), {Size = UDim2.new(0, 0, 0, 3)})
 			newBarTween:Play()
 			data.BarTween = newBarTween
 		end
 
 		local counterLabel, counterStroke = data.CounterLabel, data.CounterStroke
-		if counterLabel and counterStroke then
-			counterLabel.Text = " (x" .. tostring(data.Count) .. ")"
+		if counterLabel and counterStroke then counterLabel.Text = " (x" .. tostring(data.Count) .. ")"
 			counterLabel.TextTransparency, counterStroke.Transparency = 0, 0.4
 			local targetSize = data.baseSize * 0.8
 			counterLabel.TextSize = targetSize * 1.35
@@ -356,15 +353,13 @@ function NotificationService.Notify(message: string, isSuccess: boolean, service
 		return
 	end
 
-	local maxWidth = Preferences.maxNotificationWidth or 1200
-	local prefSize = Preferences.textSize or 26
-	local prefFont = Preferences.textFont or Enum.Font.BuilderSansExtraBold
+	local maxWidth, prefSize, prefFont = Preferences.maxNotificationWidth or 1200, Preferences.textSize or 26, Preferences.textFont or Enum.Font.BuilderSansExtraBold
 
-	playSound(startSound, 0.35)
-	print(fullText)
+	playSound(startSound, 0.35) print(fullText)
 
+	--// main container of the notif
 	local mainContainer = Instance.new("Frame")
-	mainContainer.Name = "Notification_" .. tostring(os.clock())
+	mainContainer.Name = "Notification" .. tostring(os.clock())
 	mainContainer.Size = UDim2.new(0, 0, 0, 0)
 	mainContainer.BackgroundTransparency = 1
 	mainContainer.AutomaticSize = Enum.AutomaticSize.XY
@@ -372,6 +367,7 @@ function NotificationService.Notify(message: string, isSuccess: boolean, service
 	mainContainer.LayoutOrder = tick()
 	mainContainer.Parent = stack
 
+	--// the background panel
 	local bgFrame = Instance.new("Frame")
 	bgFrame.Name = "BackgroundPanel"
 	bgFrame.Size = UDim2.new(0, 0, 0, 0)
@@ -382,16 +378,19 @@ function NotificationService.Notify(message: string, isSuccess: boolean, service
 	bgFrame.ClipsDescendants = true
 	bgFrame.Parent = mainContainer
 
+	--// uicorner for background panel
 	local bgCorner = Instance.new("UICorner")
 	bgCorner.CornerRadius = UDim.new(0, 12)
 	bgCorner.Parent = bgFrame
 
+	--// uistroke for background panel
 	local bgStroke = Instance.new("UIStroke")
 	bgStroke.Color = textColor:Lerp(Color3.new(1, 1, 1), 0.4)
 	bgStroke.Thickness = 1.5
 	bgStroke.Transparency = 1
 	bgStroke.Parent = bgFrame
 
+	--// that stupid timer label that took 5 hours to get working properly because i SUCK
 	local timerLabel = Instance.new("TextLabel")
 	timerLabel.Name = "Timer"
 	timerLabel.Text = tostring(math.ceil(dur)) .. "s"
@@ -404,6 +403,7 @@ function NotificationService.Notify(message: string, isSuccess: boolean, service
 	timerLabel.TextXAlignment = Enum.TextXAlignment.Center
 	timerLabel.Parent = bgFrame
 
+	--// timerlabel's brother
 	local durationBar = Instance.new("Frame")
 	durationBar.Name = "DurationBar"
 	durationBar.Size = UDim2.new(1, 0, 0, 7)
@@ -413,6 +413,7 @@ function NotificationService.Notify(message: string, isSuccess: boolean, service
 	durationBar.BorderSizePixel = 0
 	durationBar.Parent = bgFrame
 
+	--// content frame
 	local contentFrame = Instance.new("Frame")
 	contentFrame.Name = "Content"
 	contentFrame.Size = UDim2.new(0, 0, 0, 0)
@@ -420,6 +421,7 @@ function NotificationService.Notify(message: string, isSuccess: boolean, service
 	contentFrame.BackgroundTransparency = 1
 	contentFrame.Parent = bgFrame
 
+	--// "the text label" according to roblox assistant | uilistlayout for content frame
 	local contentLayout = Instance.new("UIListLayout")
 	contentLayout.FillDirection = Enum.FillDirection.Vertical
 	contentLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
@@ -428,6 +430,7 @@ function NotificationService.Notify(message: string, isSuccess: boolean, service
 	contentLayout.Padding = UDim.new(0, 5)
 	contentLayout.Parent = contentFrame
 
+	--// the padding (what more you want me to say exactly)
 	local contentPadding = Instance.new("UIPadding")
 	contentPadding.PaddingTop = UDim.new(0, 10)
 	contentPadding.PaddingBottom = UDim.new(0, 14)
@@ -436,25 +439,24 @@ function NotificationService.Notify(message: string, isSuccess: boolean, service
 	contentPadding.Parent = contentFrame
 
 	local bgIntroInfo = TweenInfo.new(0.5, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
-	TweenService:Create(bgFrame, bgIntroInfo, {Position = UDim2.new(0, 0, 0, 0), BackgroundTransparency = 0.15}):Play()
-	TweenService:Create(bgStroke, bgIntroInfo, {Transparency = 0}):Play()
+	TweenService:Create(bgFrame, bgIntroInfo, {Position = UDim2.new(0, 0, 0, 0), BackgroundTransparency = 0.15}):Play() TweenService:Create(bgStroke, bgIntroInfo, {Transparency = 0}):Play()
 
-	local labelsTable: {TextLabel} = table.create(#fullText, nil :: any)
-	local dropsTable: {Frame} = table.create(#fullText, nil :: any)
-	local strokesTable: {UIStroke} = table.create(#fullText, nil :: any)
+	--// tables and stuff (screw you nil :: any)
+	local labelsTable: {TextLabel}, dropsTable: {Frame}, strokesTable: {UIStroke} = table.create(#fullText, nil :: any), table.create(#fullText, nil :: any), table.create(#fullText, nil :: any)
 	local uiNodesTable: {UINode} = table.create(#fullText, nil :: any)
 
-	local textLength: number = #fullText --// thank you --!strict for shutting up
+	--// some more stuff for the intro ig
+	local textLength: number = #message
 	local maxIntroDelay = (textLength ^ 0.995) * textSpeed
 	local introBuffer = maxIntroDelay + 5
 
+	--// notif data
 	local notificationData: NotificationData = {
 		Container = mainContainer, Labels = labelsTable, baseSize = prefSize, ExpireTime = os.clock() + dur, TotalDuration = dur, Count = 1,
 		TimerLabel = timerLabel, DurationBar = durationBar, BgFrame = bgFrame, BgStroke = bgStroke
 	}
 	existingNotifications[fullText] = notificationData
-	table.insert(activeNotifications, notificationData)
-	activeNotificationCount += 1
+	table.insert(activeNotifications, notificationData) activeNotificationCount += 1
 
 	local currentLineIndex = 1
 	local function createLineContainer(): Frame
@@ -589,50 +591,33 @@ function NotificationService.Notify(message: string, isSuccess: boolean, service
 	--// > Cleanup < //--
 	--// general cleanup, aswell as the last tween for the labels
 	local textIntroTime = (globalCharCount * textSpeed) + 1.2
-
-	--// Update the expire time so the notification actually stays for 'dur' AFTER the intro finishes
 	notificationData.ExpireTime = os.clock() + textIntroTime + dur
 
 	task.spawn(function()
-
-		--// kick off the progress bar tween right after intro text finishes rendering
 		if notificationData.DurationBar and not notificationData.BarTween then
 			local remaining = math.max(0, notificationData.ExpireTime - os.clock())
-
-			--// FIX: Separate creation and playing so BarTween correctly holds the Tween object, not nil
 			local barTween = TweenService:Create(notificationData.DurationBar, TweenInfo.new(remaining, Enum.EasingStyle.Linear), {Size = UDim2.new(0, 0, 0, 3)})
 			notificationData.BarTween = barTween
 			barTween:Play()
 		end
 
-		while os.clock() < notificationData.ExpireTime do 
-			local remaining = math.max(0, notificationData.ExpireTime - os.clock())
-			if notificationData.TimerLabel then 
-				notificationData.TimerLabel.Text = string.format("%.1fs", remaining) 
-			end
-			RunService.Heartbeat:Wait()
-		end
-
-		if not mainContainer or not mainContainer.Parent then return end --// if the container was destroyed, then we can just be lazy
-
+		while os.clock() < notificationData.ExpireTime do local remaining = math.max(0, notificationData.ExpireTime - os.clock())
+			if notificationData.TimerLabel then notificationData.TimerLabel.Text = string.format("%.1fs", remaining) end RunService.Heartbeat:Wait()
+		end if not mainContainer or not mainContainer.Parent then return end
 		if existingNotifications[fullText] == notificationData then existingNotifications[fullText] = nil end --// remove from existingnotifications table i think i lowk forgot
-
 		playSound(endSound, 0.35) --// play endsound
-		
+
 		local counterInfo = TweenInfo.new(0.3, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut) --// outro tweeninfo for counterlabel
 		if notificationData.CounterLabel and notificationData.CounterStroke then --// if counter label and counter stroke
 			TweenService:Create(notificationData.CounterLabel, counterInfo, {TextTransparency = 1}):Play() --// outro tween for counterlabel
 			TweenService:Create(notificationData.CounterStroke, counterInfo, {Transparency = 1}):Play() --// outro tween for counterstroke
 		end
 
-		if notificationData.TimerLabel then
-			notificationData.TimerLabel.Text = "0.0s"
-			TweenService:Create(notificationData.TimerLabel, counterInfo, {TextTransparency = 1}):Play()
-		end
+		if notificationData.TimerLabel then notificationData.TimerLabel.Text = "0.0s" TweenService:Create(notificationData.TimerLabel, counterInfo, {TextTransparency = 1}):Play() end
 
 		local totalChars = #dropsTable --// total character count
 		for i, drop in ipairs(dropsTable) do
-			local sDelay = i * (Preferences.textEndSpeed or 0.015) --// stagger delay
+			local sDelay = i * textEndSpeed --// stagger delay
 			local outInfo = TweenInfo.new(0.45, Enum.EasingStyle.Back, Enum.EasingDirection.In, 0, false, sDelay) --// the outro tweeninfo for labels and strokes
 			TweenService:Create(labelsTable[i], outInfo, {TextTransparency = 1}):Play() --// outro tween for labels
 			TweenService:Create(strokesTable[i], outInfo, {Transparency = 1}):Play() --// outro tween for strokes
@@ -640,24 +625,16 @@ function NotificationService.Notify(message: string, isSuccess: boolean, service
 			local dropTween = TweenService:Create(drop, outInfo, {Position = UDim2.new(0, math.random(-10, 10), math.random(1.5, 1.75), 0)}) --// the tween for drops
 			dropTween:Play() --// play droptween
 
-			if i == totalChars then
-				dropTween.Completed:Connect(function()
+			if i == totalChars then dropTween.Completed:Connect(function()
 					local idx = table.find(activeNotifications, notificationData) --// finds activenotifications table
 					if idx then table.remove(activeNotifications, idx) end --// cleans up activenotifications table
 
 					--// swap-remove each label from the flat tracking tables (O(1) per label)
-					for _, label in ipairs(labelsTable) do
-						local labelIdx = table.find(allActiveLabels, label)
-						if labelIdx then
-							allActiveLabels[labelIdx] = allActiveLabels[#allActiveLabels]
-							allActiveLabels[#allActiveLabels] = nil
-						end
-						labelBaseSize[label] = nil
-						labelWaveData[label] = nil
-						labelStates[label] = nil
+					for _, label in ipairs(labelsTable) do local labelIdx = table.find(allActiveLabels, label)
+						if labelIdx then allActiveLabels[labelIdx] = allActiveLabels[#allActiveLabels] allActiveLabels[#allActiveLabels] = nil
+						end labelBaseSize[label] = nil labelWaveData[label] = nil labelStates[label] = nil
 					end
-					
-					--// slide the background frame back UP while fading for that sweet outro
+
 					local bgOutroInfo = TweenInfo.new(0.4, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
 					TweenService:Create(notificationData.BgFrame, bgOutroInfo, {Position = UDim2.new(0, 0, 0, -20), BackgroundTransparency = 1}):Play()
 					if notificationData.BgStroke then TweenService:Create(notificationData.BgStroke, bgOutroInfo, {Transparency = 1}):Play() end
